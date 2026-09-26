@@ -30,6 +30,9 @@
         <env name="DB_DATABASE" value="smart_emailing_test"/>
         <env name="DB_USERNAME" value="root"/>
         <env name="DB_PASSWORD" value="root"/>
+        <!-- Pinned so Storage::fake('local') in tests always matches the
+             disk the app writes to, regardless of .env. -->
+        <env name="FILESYSTEM_DISK" value="local"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
