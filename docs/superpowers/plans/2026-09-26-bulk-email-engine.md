@@ -15,7 +15,7 @@
 ## Environment Notes
 
 - PHP 8.2.30 at `/opt/homebrew/bin/php`, Composer 2.8.8
-- MySQL is **MAMP MySQL 5.7**, client at `/Applications/MAMP/Library/bin/mysql`, credentials `root` / `root`, socket at `/Applications/MAMP/tmp/mysql/mysql.sock`
+- MySQL is **MAMP MySQL 5.7**, client at `/Applications/MAMP/Library/bin/mysql`, credentials `root` / `root`, TCP on `127.0.0.1:3306` (verified; 8889 is not listening)
 - **MySQL 5.7, not 8.x.** No window functions. Default index key length is 767 bytes, so `Schema::defaultStringLength(191)` is required in `AppServiceProvider` or migrations with indexed string columns will fail.
 - The project directory already contains `.git`, `docs/`, an empty `index.php`, and `.DS_Store`. Laravel must be scaffolded into a temp directory and moved in — the installer refuses a non-empty target.
 
@@ -110,11 +110,10 @@ Set these keys in `.env` (and mirror the non-secret ones in `.env.example`):
 APP_NAME="Smart Emailing"
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
-DB_PORT=8889
+DB_PORT=3306
 DB_DATABASE=smart_emailing
 DB_USERNAME=root
 DB_PASSWORD=root
-DB_SOCKET=/Applications/MAMP/tmp/mysql/mysql.sock
 QUEUE_CONNECTION=database
 ```
 
@@ -590,6 +589,8 @@ In `phpunit.xml`, inside `<php>`, replace the sqlite defaults with:
 
 ```xml
 <env name="DB_CONNECTION" value="mysql"/>
+<env name="DB_HOST" value="127.0.0.1"/>
+<env name="DB_PORT" value="3306"/>
 <env name="DB_DATABASE" value="smart_emailing_test"/>
 <env name="DB_USERNAME" value="root"/>
 <env name="DB_PASSWORD" value="root"/>
