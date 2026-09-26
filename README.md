@@ -1,66 +1,126 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Smart Emailing
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Bulk email sender. Upload an Excel/CSV recipient list, review the parsed count,
+compose a message, and send — with a full per-recipient delivery report.
 
-## About Laravel
+**Every row of the uploaded file appears in the report**, including rows
+rejected for invalid email syntax. Those are recorded as `failed` with the
+reason and are never sent.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Requirements
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- PHP 8.2+
+- MySQL 5.7+
+- Composer, Node (Node is only needed to refresh the vendored TinyMCE)
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Setup
 
-## Learning Laravel
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+```
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Create the databases, then set the connection in `.env`:
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+```sql
+CREATE DATABASE smart_emailing;
+CREATE DATABASE smart_emailing_test;
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+```
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=smart_emailing
+DB_USERNAME=root
+DB_PASSWORD=root
+QUEUE_CONNECTION=database
+```
 
-## Laravel Sponsors
+Then:
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+php artisan migrate --seed
+```
 
-### Premium Partners
+Default admin: `admin@smart-emailing.test` / `password`. **Change this before
+deploying anywhere.**
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+Registration is public but always creates non-admin users, who get a 403 on
+every page. Promote someone manually:
 
-## Contributing
+```sql
+UPDATE users SET is_admin = 1 WHERE email = '...';
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Running
 
-## Code of Conduct
+```bash
+php artisan serve          # http://127.0.0.1:8000
+php artisan queue:work     # in a second terminal
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+**The queue worker must be running for mail to send.** Without it, batches sit
+at `processing` and nothing is delivered. The app does not ship a watchdog for
+this — it is inherent to queued sending.
 
-## Security Vulnerabilities
+## Usage
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+1. **SMTP** — add a profile and activate it. Credentials live in the database
+   (password encrypted at rest), not in `.env`. Use **Test** to send a probe
+   first: bad credentials surface there rather than after 10,000 failures.
+2. **Batches** — download the sample template, fill in the `name` and `email`
+   columns, and upload it. Column headings must be exactly `name` and `email`;
+   a file with different headings parses to zero rows and the compose page
+   says so.
+3. **Compose** — the page shows `Matching Records: N` (valid rows) plus any
+   rejected count. Write the subject and message. `{{ name }}` in either is
+   replaced with each recipient's name.
+4. **Send** — one queued job per valid recipient, 3 attempts with 10s/30s/60s
+   backoff. A batch can only be sent once.
+5. **Report** — every row with its status, attempt count, and failure reason.
+   Filter by status, or download the whole thing as `.xlsx`.
 
-## License
+## Architecture
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Thin controllers delegate to four services:
+
+| Service | Responsibility |
+|---------|---------------|
+| `BatchImportService` | Parses the upload **synchronously**, validates every row, creates the draft batch and all log rows |
+| `BatchDispatchService` | Claims the batch atomically (`WHERE status = draft`), saves the message, queues one job per pending row |
+| `DynamicMailerService` | Builds a Symfony mail transport at runtime from the active `smtp_settings` row |
+| `SendBulkEmailJob` | Sends one recipient's message, records the outcome, advances the batch counters atomically |
+
+Two decisions worth knowing:
+
+- **Parsing is synchronous, sending is queued.** A 10k-row file parses in
+  ~1.6s using chunked bulk inserts (21 statements, not 10,000), which keeps the
+  reviewed count trustworthy without a polling page.
+- **Counters move via SQL increments**, never read-modify-write, so parallel
+  workers cannot race and lose updates.
+
+## Testing
+
+```bash
+php artisan test
+```
+
+76 tests run against the `smart_emailing_test` database.
+
+Beyond the suite, the pipeline has been verified end to end against a real SMTP
+server: messages delivered with correct per-recipient substitution, and the
+3-attempt retry policy driven to permanent failure with the SMTP error landing
+in the report.
+
+## Known limitations
+
+- `BatchReportExport` uses `FromCollection`, loading all rows into memory. Fine
+  for typical batches; a batch of ~50k rows would want `FromQuery` with chunked
+  reading.
+- If a job dispatch throws partway through `BatchDispatchService::dispatch()`,
+  the batch is left `processing` with only some jobs queued. There is no resume
+  path.
+- Deleting the active SMTP profile mid-run fails every remaining job cleanly —
+  the reason appears in the report, but the batch will not finish sending.
