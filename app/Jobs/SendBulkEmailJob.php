@@ -13,6 +13,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -114,6 +115,11 @@ class SendBulkEmailJob implements ShouldQueue
      */
     private function settle(EmailBatch $batch, string $column): void
     {
+        // Whitelisted because the column name is interpolated into raw SQL.
+        if (! in_array($column, ['sent_count', 'failed_count'], true)) {
+            throw new InvalidArgumentException("Cannot settle on column [{$column}].");
+        }
+
         EmailBatch::whereKey($batch->id)->update([
             $column         => DB::raw($column . ' + 1'),
             'pending_count' => DB::raw('GREATEST(pending_count - 1, 0)'),
