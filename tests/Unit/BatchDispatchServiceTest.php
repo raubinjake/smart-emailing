@@ -115,6 +115,9 @@ class BatchDispatchServiceTest extends TestCase
 
         $this->assertSame(0, $queued);
         Queue::assertNothingPushed();
-        $this->assertSame(EmailBatch::STATUS_PROCESSING, $batch->fresh()->status);
+
+        // Nothing will ever settle this batch, so it must close immediately
+        // rather than sit at `processing` forever.
+        $this->assertSame(EmailBatch::STATUS_COMPLETED, $batch->fresh()->status);
     }
 }

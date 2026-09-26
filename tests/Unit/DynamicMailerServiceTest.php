@@ -7,6 +7,7 @@ use App\Services\DynamicMailerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class DynamicMailerServiceTest extends TestCase
@@ -58,6 +59,23 @@ class DynamicMailerServiceTest extends TestCase
         (new DynamicMailerService())->configureActive();
 
         $this->assertSame('current.test', Config::get('mail.mailers.dynamic_smtp.host'));
+    }
+
+    public function test_reconfiguring_actually_rebuilds_the_transport(): void
+    {
+        $a = SmtpSetting::factory()->create(['host' => 'smtp-a.example.com', 'is_active' => true]);
+        (new DynamicMailerService())->configure($a);
+        $this->assertStringContainsString('smtp-a', (string) Mail::mailer('dynamic_smtp')->getSymfonyTransport());
+
+        $b = SmtpSetting::factory()->create(['host' => 'smtp-b.example.com', 'is_active' => true]);
+        (new DynamicMailerService())->configure($b);
+
+        // MailManager caches resolved mailers; without purging, a long-running
+        // worker would keep sending through profile A forever.
+        $this->assertStringContainsString(
+            'smtp-b',
+            (string) Mail::mailer('dynamic_smtp')->getSymfonyTransport(),
+        );
     }
 
     public function test_it_throws_when_no_profile_is_active(): void

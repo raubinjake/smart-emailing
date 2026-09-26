@@ -170,6 +170,21 @@ class EmailBatchFlowTest extends TestCase
             ->assertOk();
     }
 
+    public function test_a_malformed_status_filter_does_not_break_the_report(): void
+    {
+        $batch = EmailBatch::factory()->create();
+        EmailLog::factory()->create(['batch_id' => $batch->id]);
+
+        // Query input can be an array or junk; neither should 500.
+        $this->actingAs($this->admin)
+            ->get(route('batches.export', $batch) . '?status[]=sent')
+            ->assertOk();
+
+        $this->actingAs($this->admin)
+            ->get(route('batches.show', $batch) . '?status=nonsense')
+            ->assertOk();
+    }
+
     public function test_a_non_admin_cannot_upload(): void
     {
         Storage::fake('local');

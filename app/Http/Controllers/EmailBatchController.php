@@ -7,6 +7,7 @@ use App\Exports\SampleTemplateExport;
 use App\Http\Requests\SendBatchRequest;
 use App\Http\Requests\UploadBatchRequest;
 use App\Models\EmailBatch;
+use App\Models\EmailLog;
 use App\Services\BatchDispatchService;
 use App\Services\BatchImportService;
 use Illuminate\Http\RedirectResponse;
@@ -91,7 +92,7 @@ class EmailBatchController extends Controller
      */
     public function show(Request $request, EmailBatch $batch): View
     {
-        $status = $request->query('status');
+        $status = $this->statusFilter($request);
 
         $logs = $batch->logs()
             ->when($status, fn ($q) => $q->where('status', $status))
@@ -108,9 +109,30 @@ class EmailBatchController extends Controller
     public function exportReport(Request $request, EmailBatch $batch): BinaryFileResponse
     {
         return Excel::download(
-            new BatchReportExport($batch, $request->query('status')),
+            new BatchReportExport($batch, $this->statusFilter($request)),
             'batch-' . $batch->id . '-report.xlsx',
         );
+    }
+
+    /**
+     * The `status` query filter, or null when absent or not a real status.
+     *
+     * Query input can be an array (`?status[]=sent`), so it is narrowed to a
+     * known status rather than passed through.
+     *
+     * @param  Request  $request  the incoming request
+     */
+    private function statusFilter(Request $request): ?string
+    {
+        $status = $request->query('status');
+
+        $allowed = [
+            EmailLog::STATUS_PENDING,
+            EmailLog::STATUS_SENT,
+            EmailLog::STATUS_FAILED,
+        ];
+
+        return is_string($status) && in_array($status, $allowed, true) ? $status : null;
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\SmtpSetting;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Mail;
 use RuntimeException;
 
 /**
@@ -23,6 +24,11 @@ class DynamicMailerService
      */
     public function configure(SmtpSetting $smtp): string
     {
+        // MailManager caches resolved mailers for the life of the process, so
+        // without this a long-running worker keeps using the first profile it
+        // ever saw — new config is read only when the mailer is re-resolved.
+        Mail::purge(self::MAILER);
+
         Config::set('mail.mailers.' . self::MAILER, [
             'transport'  => 'smtp',
             'host'       => $smtp->host,

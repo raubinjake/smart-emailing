@@ -35,14 +35,30 @@ class BatchReportExport implements FromCollection, WithHeadings
             ->orderBy('id')
             ->get()
             ->map(fn ($log) => [
-                $log->name,
-                $log->email,
+                $this->defuse($log->name),
+                $this->defuse($log->email),
                 ucfirst($log->status),
                 $log->sent_at?->format('Y-m-d') ?? $log->created_at->format('Y-m-d'),
                 $log->sent_at?->format('H:i:s') ?? $log->created_at->format('H:i:s'),
                 $log->attempts,
-                $log->remarks ?? '',
+                $this->defuse($log->remarks ?? ''),
             ]);
+    }
+
+    /**
+     * Neutralise a spreadsheet formula in a cell value.
+     *
+     * Recipient names come from a file the admin did not write, and remarks
+     * carry text from a remote SMTP server. A value starting with =, +, -, @
+     * or a control character is executed as a formula on open, so prefix it
+     * with an apostrophe to force Excel to treat it as text.
+     *
+     * @param  string  $value  the raw cell value
+     * @return string the value, safe to write to a cell
+     */
+    private function defuse(string $value): string
+    {
+        return preg_match('/^[=+\-@\t\r]/', $value) === 1 ? "'" . $value : $value;
     }
 
     /**

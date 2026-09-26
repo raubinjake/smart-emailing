@@ -20,6 +20,11 @@ class BatchImportService
 {
     public const INVALID_EMAIL_REMARK = 'Invalid email syntax';
 
+    public const TOO_LONG_REMARK = 'Name or email exceeds 191 characters';
+
+    /** Matches Schema::defaultStringLength(191) — the email_logs column width. */
+    private const MAX_FIELD_LENGTH = 191;
+
     private const INSERT_CHUNK = 500;
 
     /**
@@ -51,16 +56,20 @@ class BatchImportService
             $records = [];
 
             foreach ($rows as $row) {
-                $isValid = $this->isValid($row['name'], $row['email']);
+                $remark  = $this->rejectionReason($row['name'], $row['email']);
+                $isValid = $remark === null;
                 $isValid ? $pending++ : $failed++;
 
                 $records[] = [
                     'batch_id'   => $batch->id,
-                    'name'       => $row['name'],
-                    'email'      => $row['email'],
+                    // Truncated to the column width: an overlong cell is
+                    // already rejected above, and storing it untruncated would
+                    // abort the insert and lose the whole file.
+                    'name'       => mb_substr($row['name'], 0, self::MAX_FIELD_LENGTH),
+                    'email'      => mb_substr($row['email'], 0, self::MAX_FIELD_LENGTH),
                     'status'     => $isValid ? EmailLog::STATUS_PENDING : EmailLog::STATUS_FAILED,
                     'attempts'   => 0,
-                    'remarks'    => $isValid ? null : self::INVALID_EMAIL_REMARK,
+                    'remarks'    => $remark,
                     'sent_at'    => null,
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -106,12 +115,25 @@ class BatchImportService
     }
 
     /**
-     * A row is valid when both columns are present and the email is RFC-parseable.
+     * Why this row cannot be sent, or null when it is valid.
+     *
+     * A row is valid when both columns are present, neither exceeds the
+     * column width, and the email is RFC-parseable.
+     *
+     * @param  string  $name   the recipient's name
+     * @param  string  $email  the recipient's address
+     * @return string|null the remark to record, or null when the row is sendable
      */
-    private function isValid(string $name, string $email): bool
+    private function rejectionReason(string $name, string $email): ?string
     {
-        return $name !== ''
-            && $email !== ''
-            && filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+        if (mb_strlen($name) > self::MAX_FIELD_LENGTH || mb_strlen($email) > self::MAX_FIELD_LENGTH) {
+            return self::TOO_LONG_REMARK;
+        }
+
+        if ($name === '' || $email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return self::INVALID_EMAIL_REMARK;
+        }
+
+        return null;
     }
 }

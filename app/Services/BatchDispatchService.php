@@ -58,6 +58,13 @@ class BatchDispatchService
                 }
             });
 
+        // Completion is otherwise only ever set by a job's settle(); with no
+        // jobs queued the batch would sit at `processing` forever, telling the
+        // admin work is in flight when there is nothing to wait for.
+        if ($queued === 0) {
+            $batch->update(['status' => EmailBatch::STATUS_COMPLETED]);
+        }
+
         return $queued;
     }
 }
