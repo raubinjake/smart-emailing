@@ -10,6 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
 use Throwable;
@@ -78,6 +79,11 @@ class SmtpSettingController extends Controller
     public function activate(SmtpSetting $smtp): RedirectResponse
     {
         DB::transaction(function () use ($smtp) {
+            // Lock every row first so two concurrent activations serialise;
+            // without it both can deactivate "the others" from their own
+            // snapshot and each leave itself active.
+            SmtpSetting::lockForUpdate()->pluck('id');
+
             SmtpSetting::where('id', '!=', $smtp->id)->update(['is_active' => false]);
             $smtp->update(['is_active' => true]);
         });
@@ -105,8 +111,16 @@ class SmtpSettingController extends Controller
                     '<p>This is a test message from the ' . e($smtp->name) . ' profile.</p>',
                 ));
         } catch (Throwable $e) {
+            // Symfony's SMTP auth failures embed the username (and the
+            // server's banner) in the message, so log the detail and show
+            // the admin only the class of failure.
+            Log::warning('SMTP test send failed', [
+                'smtp_setting_id' => $smtp->id,
+                'error'           => $e->getMessage(),
+            ]);
+
             return redirect()->route('smtp.index')
-                ->with('error', 'Test failed: ' . $e->getMessage());
+                ->with('error', 'Test failed — the server rejected the connection. See the log for details.');
         }
 
         return redirect()->route('smtp.index')

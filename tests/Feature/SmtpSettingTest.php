@@ -136,6 +136,23 @@ class SmtpSettingTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_a_failed_test_send_does_not_leak_the_smtp_username(): void
+    {
+        $smtp = SmtpSetting::factory()->create(['username' => 'secret-user@internal.test']);
+
+        Mail::shouldReceive('mailer')->andThrow(new \RuntimeException(
+            'Failed to authenticate on SMTP server with username "secret-user@internal.test".',
+        ));
+
+        $response = $this->actingAs($this->admin)
+            ->post(route('smtp.test', $smtp), ['email' => 'check@example.com'])
+            ->assertRedirect(route('smtp.index'));
+
+        $error = session('error');
+        $this->assertNotNull($error);
+        $this->assertStringNotContainsString('secret-user@internal.test', $error);
+    }
+
     public function test_deleting_a_profile_removes_it(): void
     {
         $smtp = SmtpSetting::factory()->create();
