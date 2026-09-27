@@ -1638,8 +1638,11 @@ img {
         font-size: var(--t-md);
     }
 
+    /* The file input is a control like any other: below 16px iOS zooms the
+       page the moment it is tapped, which is the first thing a phone user
+       does on the upload screen. */
     .input[type="file"] {
-        font-size: var(--t-base);
+        font-size: var(--t-md);
     }
 
     .check input {
