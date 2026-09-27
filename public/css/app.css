@@ -1246,8 +1246,45 @@ img {
 }
 
 /* --------------------------------------------------------------------------
-   16. Narrow viewports
+   16. Responsive
+   Three breakpoints, deliberately few:
+
+     900px — tablet: the page header and its actions stop competing for one
+             line, and the stat strip drops to a fixed two columns.
+     720px — the table reflow. Below this width a seven-column table cannot be
+             read without scrolling sideways, so every row becomes a stacked
+             card: the heading cell reads as the card title, the rest render as
+             label/value pairs from their data-label, and the actions sit
+             full-width at the foot. `.table-wrap` keeps overflow-x as a safety
+             net for anything unexpectedly wide.
+     420px — very small phones: the stat strip goes to a single column and the
+             top bar tightens.
+
+   Plus a (pointer: coarse) block for touch sizing, which is a property of the
+   input device rather than the viewport.
    -------------------------------------------------------------------------- */
+
+/* Desktop width for the inline test-send field (was an inline style) */
+.input--test {
+    width: 12rem;
+}
+
+/* ---- 900px — tablet ---- */
+
+@media (max-width: 900px) {
+    .page-head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: var(--sp-3);
+    }
+
+    /* Four 150px tiles cannot fit; two per row beats a squeezed four */
+    .stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* ---- 720px — table reflow ---- */
 
 @media (max-width: 720px) {
     .topbar__inner {
@@ -1263,9 +1300,15 @@ img {
         padding: var(--sp-5) var(--sp-4) var(--sp-6);
     }
 
+    /* Paired form fields stack — one column, full width */
     .col-4,
     .col-8 {
         grid-column: span 12;
+    }
+
+    /* The grid collapses its column gap, so restore vertical rhythm */
+    .form-grid {
+        gap: 0;
     }
 
     .compose-head {
@@ -1274,6 +1317,334 @@ img {
 
     .compose-count {
         text-align: left;
+    }
+
+    /* The upload row: file input and button stack, neither overflowing */
+    .input[type="file"] {
+        max-width: 100%;
+    }
+
+    /* A blank spacer label above the upload button wastes a line on a phone */
+    .col-4 .field__label:empty,
+    .field__label[for="upload-submit"] {
+        display: none;
+    }
+
+    /* The report's filter select and its count stop squeezing */
+    .filter-bar {
+        align-items: stretch;
+        flex-direction: column;
+        gap: var(--sp-2);
+    }
+
+    .filter-bar > div {
+        width: 100%;
+    }
+
+    .select--auto {
+        width: 100%;
+    }
+
+    .filter-bar__count {
+        padding-bottom: 0;
+    }
+
+    /* Panel headers hold a title and a meta count — let them stack */
+    .panel__head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: var(--sp-2);
+    }
+
+    /* The send button and the compose form's primary action go full width */
+    .form-actions .btn--lg,
+    .form-actions .btn--block {
+        width: 100%;
+    }
+
+    /* TinyMCE at 400px leaves no room for the page around it */
+    .tox-tinymce {
+        height: 280px !important;
+    }
+
+    /* ---- Table → stacked cards ----
+       Each <tr> becomes a card; each <td> a label/value row fed by data-label.
+       display:block on table elements is what removes the column grid. */
+
+    .table thead {
+        display: none;
+    }
+
+    .table,
+    .table tbody,
+    .table tr,
+    .table td {
+        display: block;
+        width: auto;
+    }
+
+    .table {
+        border-collapse: separate;
+    }
+
+    .table tbody {
+        padding: var(--sp-4);
+    }
+
+    .table tbody tr {
+        position: relative;
+        overflow: hidden;
+        padding: var(--sp-3) var(--sp-4);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        background: var(--surface);
+    }
+
+    .table tbody tr + tr {
+        margin-top: var(--sp-3);
+    }
+
+    /* Hover on a card, not on a cell */
+    .table tbody tr:hover td {
+        background: transparent;
+    }
+
+    .table tbody tr:hover {
+        background: var(--surface-alt);
+    }
+
+    .table tbody td {
+        padding: var(--sp-2) 0;
+        border-bottom: 1px dashed var(--line);
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--sp-4);
+        text-align: left;
+    }
+
+    .table tbody tr td:last-child,
+    .table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+
+    /* The label, drawn from the markup's data-label */
+    .table tbody td[data-label]::before {
+        content: attr(data-label);
+        flex: none;
+        font-size: var(--t-xs);
+        font-weight: 600;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        color: var(--ink-faint);
+    }
+
+    /* Value side: right-aligned against its label, free to wrap */
+    .table tbody td[data-label] > *,
+    .table tbody td[data-label] .cell-stack {
+        text-align: right;
+        align-items: flex-end;
+        min-width: 0;
+    }
+
+    .table tbody td[data-label].num,
+    .table tbody td[data-label].mono {
+        text-align: right;
+    }
+
+    .table tbody td .remark {
+        max-width: none;
+    }
+
+    /* The identifying cell reads as the card's heading, not a pair */
+    .table tbody td[data-head] {
+        display: block;
+        padding-top: 0;
+        padding-bottom: var(--sp-2);
+        font-size: var(--t-base);
+        font-weight: 600;
+        color: var(--ink);
+    }
+
+    /* The semantic left stripe survives the reflow — it moves from the first
+       cell to the card edge, which is where it belongs once rows are cards. */
+    .table tbody tr.row-state td:first-child {
+        padding-left: 0;
+    }
+
+    .table tbody tr.row-state td:first-child::before {
+        content: none;
+    }
+
+    .table tbody tr.row-state {
+        padding-left: calc(var(--sp-4) + 3px);
+    }
+
+    .table tbody tr.row-state::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: var(--line-strong);
+    }
+
+    .table tbody tr.row-ok::before {
+        background: var(--ok);
+    }
+
+    .table tbody tr.row-bad::before {
+        background: var(--bad);
+    }
+
+    .table tbody tr.row-warn::before {
+        background: var(--warn);
+    }
+
+    .table tbody tr.row-busy::before {
+        background: var(--accent);
+    }
+
+    /* Actions sit full width at the foot of the card, wrapping as needed */
+    .table tbody td[data-actions] {
+        display: block;
+        padding-top: var(--sp-3);
+        border-bottom: 0;
+        white-space: normal;
+        text-align: left;
+    }
+
+    .table tbody td[data-actions] .actions__row {
+        display: flex;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: var(--sp-2);
+    }
+
+    /* The SMTP test-send field is a full-width row of its own inside them */
+    .table tbody td[data-actions] .inline-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--sp-2);
+    }
+
+    .input--test {
+        width: auto;
+        flex: 1 1 10rem;
+        min-width: 0;
+    }
+
+    /* Empty states keep their colspan cell readable once reflowed */
+    .table__empty td {
+        display: block;
+        padding: var(--sp-6) var(--sp-4);
+        text-align: center;
+    }
+
+    .table tbody tr.table__empty {
+        border-style: dashed;
+    }
+
+    /* Pagination must not push the panel wide */
+    .pager {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: var(--sp-3);
+    }
+
+    .pager__links {
+        flex-wrap: wrap;
+    }
+}
+
+/* ---- 420px — very small phones ---- */
+
+@media (max-width: 420px) {
+    .stats {
+        grid-template-columns: 1fr;
+    }
+
+    .topbar__inner {
+        gap: var(--sp-2);
+        padding: 0 var(--sp-3);
+    }
+
+    .topnav__link {
+        padding: var(--sp-2);
+    }
+
+    /* Brand keeps its name; the decorative mark is the first thing to go */
+    .brand__mark {
+        display: none;
+    }
+
+    /* The role badge is decorative next to the account's own page */
+    .topbar__user .tag {
+        display: none;
+    }
+
+    .shell {
+        padding: var(--sp-4) var(--sp-3) var(--sp-6);
+    }
+
+    .table tbody {
+        padding: var(--sp-3);
+    }
+
+    .table tbody td[data-actions] .actions__row > *,
+    .table tbody td[data-actions] .actions__row .btn {
+        flex: 1 1 auto;
+    }
+}
+
+/* ---- Touch sizing ----
+   A property of the pointer, not the viewport: 44x44 per WCAG 2.5.5, plus
+   16px text inputs so iOS Safari stops zooming the page on focus. */
+
+@media (pointer: coarse) {
+    .btn,
+    .btn--sm {
+        min-height: 44px;
+        padding-top: var(--sp-2);
+        padding-bottom: var(--sp-2);
+    }
+
+    .btn--sm {
+        padding-left: var(--sp-3);
+        padding-right: var(--sp-3);
+        font-size: var(--t-base);
+    }
+
+    .topnav__link,
+    .pager__links a,
+    .pager__links span {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .pager__links a,
+    .pager__links span {
+        min-width: 44px;
+        justify-content: center;
+    }
+
+    .input,
+    .select,
+    .textarea {
+        min-height: 44px;
+        /* 16px or iOS Safari zooms the page on focus — a real bug */
+        font-size: var(--t-md);
+    }
+
+    .input[type="file"] {
+        font-size: var(--t-base);
+    }
+
+    .check input {
+        width: 20px;
+        height: 20px;
     }
 }
 

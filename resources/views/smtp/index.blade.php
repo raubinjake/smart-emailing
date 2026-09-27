@@ -36,13 +36,13 @@
                     <tbody>
                         @forelse ($settings as $smtp)
                             <tr class="row-state {{ $smtp->is_active ? 'row-ok' : '' }}">
-                                <td>
+                                <td data-head>
                                     <div class="cell-stack">
                                         <span>{{ $smtp->name }}</span>
                                         <span class="cell-stack__sub mono">{{ $smtp->username }}</span>
                                     </div>
                                 </td>
-                                <td>
+                                <td data-label="Host">
                                     <div class="cell-stack">
                                         <span class="mono">{{ $smtp->host }}</span>
                                         <span class="cell-stack__sub">
@@ -50,29 +50,28 @@
                                         </span>
                                     </div>
                                 </td>
-                                <td class="num">{{ $smtp->port }}</td>
-                                <td>
+                                <td class="num" data-label="Port">{{ $smtp->port }}</td>
+                                <td data-label="Envelope from">
                                     <div class="cell-stack">
                                         <span>{{ $smtp->from_name }}</span>
                                         <span class="cell-stack__sub mono">{{ $smtp->from_address }}</span>
                                     </div>
                                 </td>
-                                <td>
+                                <td data-label="State">
                                     @if ($smtp->is_active)
                                         <span class="pill pill--ok">Active</span>
                                     @else
                                         <span class="pill pill--idle">Standby</span>
                                     @endif
                                 </td>
-                                <td class="actions">
+                                <td class="actions" data-actions>
                                     <div class="actions__row">
                                         <form method="POST" action="{{ route('smtp.test', $smtp) }}"
                                               class="inline-form">
                                             @csrf
-                                            <input type="email" name="email" class="input input--mono"
+                                            <input type="email" name="email" class="input input--mono input--test"
                                                    placeholder="test@example.com" required
-                                                   aria-label="Send a test message to"
-                                                   style="width: 12rem;">
+                                                   aria-label="Send a test message to">
                                             <button type="submit" class="btn btn--sm">Send test</button>
                                         </form>
 
@@ -99,7 +98,7 @@
                             </tr>
                         @empty
                             <tr class="table__empty">
-                                <td colspan="6">
+                                <td colspan="6" data-head>
                                     <strong>No relay configured</strong>
                                     Add an SMTP profile before running a send.
                                 </td>

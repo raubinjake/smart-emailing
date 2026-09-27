@@ -112,7 +112,7 @@
                                 };
                             @endphp
                             <tr class="row-state {{ $rowState }}">
-                                <td>
+                                <td data-head>
                                     <div class="cell-stack">
                                         <span class="mono">{{ $batch->file_name }}</span>
                                         @if ($nothingToSend)
@@ -122,18 +122,18 @@
                                         @endif
                                     </div>
                                 </td>
-                                <td class="mono">{{ $batch->created_at->format('d M Y H:i') }}</td>
-                                <td class="num">{{ number_format($batch->total_emails) }}</td>
-                                <td class="num">{{ number_format($batch->sent_count) }}</td>
-                                <td class="num">{{ number_format($batch->failed_count) }}</td>
-                                <td>
+                                <td class="mono" data-label="Uploaded">{{ $batch->created_at->format('d M Y H:i') }}</td>
+                                <td class="num" data-label="Total">{{ number_format($batch->total_emails) }}</td>
+                                <td class="num" data-label="Delivered">{{ number_format($batch->sent_count) }}</td>
+                                <td class="num" data-label="Failed">{{ number_format($batch->failed_count) }}</td>
+                                <td data-label="State">
                                     @if ($nothingToSend)
                                         <span class="pill pill--bad">Nothing to send</span>
                                     @else
                                         @include('partials.status-badge', ['status' => $batch->status])
                                     @endif
                                 </td>
-                                <td class="actions">
+                                <td class="actions" data-actions>
                                     <div class="actions__row">
                                         @if ($nothingToSend)
                                             <a href="{{ route('batches.show', $batch) }}"
@@ -161,7 +161,7 @@
                             </tr>
                         @empty
                             <tr class="table__empty">
-                                <td colspan="7">
+                                <td colspan="7" data-head>
                                     <strong>No batches yet</strong>
                                     Upload a recipient file above to queue your first send.
                                 </td>

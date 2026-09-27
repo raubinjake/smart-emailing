@@ -85,13 +85,13 @@
                                 };
                             @endphp
                             <tr class="row-state {{ $rowState }}">
-                                <td>{{ $log->displayName() }}</td>
-                                <td class="mono">{{ $log->email }}</td>
-                                <td>@include('partials.status-badge', ['status' => $log->status])</td>
-                                <td class="mono">{{ $stamp?->format('d M Y') }}</td>
-                                <td class="mono">{{ $stamp?->format('H:i:s') }}</td>
-                                <td class="num">{{ $log->attempts }}</td>
-                                <td>
+                                <td data-head>{{ $log->displayName() }}</td>
+                                <td class="mono" data-label="Address">{{ $log->email }}</td>
+                                <td data-label="State">@include('partials.status-badge', ['status' => $log->status])</td>
+                                <td class="mono" data-label="Date">{{ $stamp?->format('d M Y') }}</td>
+                                <td class="mono" data-label="Time">{{ $stamp?->format('H:i:s') }}</td>
+                                <td class="num" data-label="Attempts">{{ $log->attempts }}</td>
+                                <td data-label="Response">
                                     @if (filled($log->remarks))
                                         <span class="remark">{{ $log->remarks }}</span>
                                     @else
@@ -101,7 +101,7 @@
                             </tr>
                         @empty
                             <tr class="table__empty">
-                                <td colspan="7">
+                                <td colspan="7" data-head>
                                     <strong>No rows match this filter</strong>
                                     Choose a different state to see the rest of the batch.
                                 </td>
