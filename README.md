@@ -1,105 +1,373 @@
 # Smart Emailing
 
-Bulk email sender. Upload an Excel/CSV recipient list, review the parsed count,
-compose a message, and send — with a full per-recipient delivery report.
+A Laravel 11 bulk email system. Upload an Excel/CSV recipient list, review the
+parsed count, compose a rich-text message, and send — with a complete
+per-recipient delivery report.
 
-**Every row of the uploaded file appears in the report**, including rows
-rejected for invalid email syntax. Those are recorded as `failed` with the
-reason and are never sent.
+**Every row of the uploaded file appears in the report.** Rows rejected for a
+malformed address are recorded as `failed` with the reason rather than silently
+dropped, so the report always accounts for the whole file.
+
+---
+
+## Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Running the app](#running-the-app)
+- [How to use it](#how-to-use-it)
+- [The recipient file](#the-recipient-file)
+- [How sending works](#how-sending-works)
+- [Routes](#routes)
+- [Architecture](#architecture)
+- [Database schema](#database-schema)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [Known limitations](#known-limitations)
+
+---
+
+## Features
+
+### Two-step upload
+
+The file is parsed **synchronously** the moment it is uploaded, so the count
+you review is the real one. Only the sending is queued.
+
+- Accepts `.xlsx`, `.xls`, `.csv` (max 10 MB)
+- Validates every row: both `name` and `email` present, address RFC-parseable,
+  neither field over 191 characters
+- Creates a `draft` batch with one log row per file row — valid rows `pending`,
+  invalid rows `failed` with a remark
+- Fully blank rows are skipped; duplicates are preserved
+- Downloadable sample template so the expected format is never a guess
+- A batch can only be sent once — a double-submit or refresh cannot send the
+  list twice
+
+### Rich-text compose
+
+- Shows **Matching Records: N** (sendable rows) before the message fields
+- Reports how many rows were rejected, and why, before anything is sent
+- Warns clearly when zero rows matched — usually wrong column headings — and
+  disables the send button
+- TinyMCE editor, self-hosted (no API key, no CDN, works offline)
+- `{{ name }}` in the subject or body is replaced with each recipient's name
+
+### Queued sending with retries
+
+- One queued job per recipient
+- 3 attempts with a 10s / 30s / 60s backoff
+- The real SMTP error is recorded against the recipient on each attempt
+- Batch counters move via atomic SQL increments, so parallel workers cannot
+  race and lose updates
+- The batch closes itself when the last recipient settles
+
+### Database-stored SMTP
+
+Credentials live in the database, not `.env`, so they can be changed without a
+redeploy.
+
+- Multiple profiles, exactly one active at a time
+- Passwords encrypted at rest (`Crypt`), never rendered back into the form
+- **Send test email** — verify credentials before a 10,000-recipient run
+  rather than after it
+- Editing a profile and leaving the password blank keeps the stored one
+
+### Reporting
+
+- Summary: total, sent, failed, success rate
+- Every row with status, date, time, attempt count, and failure reason
+- Filter by All / Sent / Failed / Pending
+- Excel export of the report, honouring the active filter
+- Delete a batch — removes its logs and the stored upload
+
+### Access control
+
+- Session authentication
+- Registration is public but **always** creates non-admin users
+- Every batch and SMTP route is admin-gated; non-admins get a 403
+- Admins are promoted manually via SQL
+
+---
 
 ## Requirements
 
-- PHP 8.2+
-- MySQL 5.7+
-- Composer, Node (Node is only needed to refresh the vendored TinyMCE)
+| | |
+|---|---|
+| PHP | 8.2+ |
+| MySQL | 5.7+ (8.x fine) |
+| Composer | 2.x |
+| Node | Only to refresh the vendored TinyMCE — not needed to run the app |
 
-## Setup
+---
+
+## Installation
 
 ```bash
+git clone https://github.com/raubinjake/smart-emailing.git
+cd smart-emailing
 composer install
 cp .env.example .env
 php artisan key:generate
 ```
 
-Create the databases, then set the connection in `.env`:
+Create the two databases:
 
 ```sql
 CREATE DATABASE smart_emailing;
 CREATE DATABASE smart_emailing_test;
 ```
 
-```
+Set the connection in `.env`:
+
+```dotenv
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DATABASE=smart_emailing
 DB_USERNAME=root
 DB_PASSWORD=root
+
 QUEUE_CONNECTION=database
 ```
 
-Then:
+> **MAMP note:** MAMP ships two MySQL port configurations — `3306` and `8889`.
+> This project was developed against `3306`. If the connection is refused,
+> check which one your install uses on MAMP's start page and adjust `DB_PORT`.
+
+Run the migrations and seed the first admin:
 
 ```bash
 php artisan migrate --seed
 ```
 
-Default admin: `admin@smart-emailing.test` / `password`. **Change this before
-deploying anywhere.**
+This creates:
 
-Registration is public but always creates non-admin users, who get a 403 on
-every page. Promote someone manually:
+| Email | Password |
+|---|---|
+| `admin@smart-emailing.test` | `password` |
 
-```sql
-UPDATE users SET is_admin = 1 WHERE email = '...';
-```
+> ⚠️ **Change this password before deploying anywhere.**
 
-## Running
+---
+
+## Running the app
+
+You need **two terminals**. The app serves pages in one and sends mail in the
+other.
+
+**Terminal 1 — the web server:**
 
 ```bash
-php artisan serve          # http://127.0.0.1:8000
-php artisan queue:work     # in a second terminal
+php artisan serve
 ```
 
-**The queue worker must be running for mail to send.** Without it, batches sit
-at `processing` and nothing is delivered. The app does not ship a watchdog for
-this — it is inherent to queued sending.
+Open <http://127.0.0.1:8000>.
 
-## Usage
+**Terminal 2 — the queue worker:**
 
-1. **SMTP** — add a profile and activate it. Credentials live in the database
-   (password encrypted at rest), not in `.env`. Use **Test** to send a probe
-   first: bad credentials surface there rather than after 10,000 failures.
-2. **Batches** — download the sample template, fill in the `name` and `email`
-   columns, and upload it. Column headings must be exactly `name` and `email`;
-   a file with different headings parses to zero rows and the compose page
-   says so.
-3. **Compose** — the page shows `Matching Records: N` (valid rows) plus any
-   rejected count. Write the subject and message. `{{ name }}` in either is
-   replaced with each recipient's name.
-4. **Send** — one queued job per valid recipient, 3 attempts with 10s/30s/60s
-   backoff. A batch can only be sent once.
-5. **Report** — every row with its status, attempt count, and failure reason.
-   Filter by status, or download the whole thing as `.xlsx`.
+```bash
+php artisan queue:work
+```
+
+> **The queue worker must be running for mail to actually send.** Without it,
+> batches sit at `processing` and nothing is delivered. This is inherent to
+> queued sending — the app does not ship a watchdog for it.
+
+To watch a batch drain, leave the worker running and refresh the report page.
+
+---
+
+## How to use it
+
+### 1. Configure SMTP
+
+Go to **SMTP → Add Profile** and fill in your mail server details:
+
+| Field | Example |
+|---|---|
+| Profile name | `Primary` |
+| Host | `smtp.gmail.com` |
+| Port | `587` |
+| Username | `you@gmail.com` |
+| Password | your SMTP password or app password |
+| Encryption | `TLS` |
+| From address | `noreply@yourdomain.com` |
+| From name | `Your Company` |
+
+The first profile you create becomes active automatically. Use the **Test**
+button — enter your own address and send a probe. If credentials are wrong you
+find out here, not after a thousand failures.
+
+### 2. Prepare the recipient list
+
+Click **Sample** on the Batches page to download a template, then fill in your
+recipients. See [The recipient file](#the-recipient-file) for the format.
+
+### 3. Upload
+
+On **Batches**, choose your file and click **Upload & Continue**. The file is
+parsed immediately and you land on the compose page.
+
+### 4. Compose
+
+The page shows **Matching Records: N** — how many rows will actually be sent —
+plus a note about any rejected rows.
+
+Write your subject and message. Use `{{ name }}` anywhere in either and it is
+replaced per recipient:
+
+```text
+Subject:  Welcome {{ name }}!
+Message:  Hi {{ name }}, thanks for signing up.
+```
+
+Ada Lovelace receives *"Welcome Ada Lovelace!"*.
+
+### 5. Send
+
+Click **SEND BULK EMAIL**. Jobs are queued and the batch flips to
+`processing`. You are redirected to the report.
+
+### 6. Read the report
+
+Watch it fill in as the worker runs. Filter by status, or download the whole
+thing as `.xlsx`.
+
+---
+
+## The recipient file
+
+Two columns. **The heading row is required**, and the headings must be exactly
+`name` and `email` — column order does not matter.
+
+```csv
+name,email
+Ada Lovelace,ada@example.com
+Alan Turing,alan@example.com
+Grace Hopper,grace@example.com
+```
+
+| Rule | Behaviour |
+|---|---|
+| Missing `name` or `email` | Row recorded as `failed`, remark `Invalid email syntax` |
+| Malformed address | Row recorded as `failed`, remark `Invalid email syntax` |
+| Field over 191 characters | Row recorded as `failed`, remark `Name or email exceeds 191 characters` |
+| Fully blank row | Skipped entirely, not counted |
+| Duplicate rows | Kept — each gets its own email |
+| Wrong headings (e.g. `Full Name`) | Parses to **zero** rows; the compose page warns you |
+
+Rejected rows are never sent but always appear in the report.
+
+---
+
+## How sending works
+
+```text
+Upload  ──► parse synchronously ──► draft batch + one log row per file row
+                                     (valid → pending, invalid → failed)
+                                            │
+Compose ──► subject + body ────────────────►│
+                                            │
+Send    ──► claim batch atomically ─────────► status = processing
+            queue 1 job per pending row
+                                            │
+Worker  ──► per job: build transport from the active SMTP profile
+            substitute {{ name }}, send
+              ├─ success  → log sent,   sent_count++,   pending_count--
+              ├─ failure  → attempts++, remark recorded, retry (10s/30s/60s)
+              └─ 3 fails  → log failed, failed_count++, pending_count--
+                                            │
+                        pending_count hits 0 ──► batch completed
+```
+
+---
+
+## Routes
+
+All batch and SMTP routes require authentication **and** an admin account.
+
+| Method | URI | Name | Purpose |
+|---|---|---|---|
+| GET | `/login` | `login` | Login form |
+| POST | `/login` | — | Authenticate |
+| GET | `/register` | `register` | Registration form |
+| POST | `/register` | — | Create a non-admin account |
+| POST | `/logout` | `logout` | Log out |
+| GET | `/` | — | Redirects to the dashboard |
+| GET | `/batches` | `batches.index` | Upload card + batch list |
+| GET | `/batches/sample-download` | `batches.sample` | Download the sample template |
+| POST | `/batches/upload` | `batches.upload` | Parse a file into a draft batch |
+| GET | `/batches/{batch}/compose` | `batches.compose` | Count + message form |
+| POST | `/batches/{batch}/send` | `batches.send` | Queue the send |
+| GET | `/batches/{batch}` | `batches.show` | The report |
+| GET | `/batches/{batch}/export` | `batches.export` | Report as `.xlsx` |
+| DELETE | `/batches/{batch}` | `batches.destroy` | Delete batch, logs, upload |
+| GET | `/smtp` | `smtp.index` | Profile list |
+| GET | `/smtp/create` | `smtp.create` | New profile form |
+| POST | `/smtp` | `smtp.store` | Save a profile |
+| GET | `/smtp/{smtp}/edit` | `smtp.edit` | Edit form |
+| PUT | `/smtp/{smtp}` | `smtp.update` | Update a profile |
+| POST | `/smtp/{smtp}/activate` | `smtp.activate` | Make this the active profile |
+| POST | `/smtp/{smtp}/test` | `smtp.test` | Send a test message |
+| DELETE | `/smtp/{smtp}` | `smtp.destroy` | Delete a profile |
+
+---
 
 ## Architecture
 
-Thin controllers delegate to four services:
+Thin controllers delegate to four services, each independently testable.
 
 | Service | Responsibility |
-|---------|---------------|
-| `BatchImportService` | Parses the upload **synchronously**, validates every row, creates the draft batch and all log rows |
-| `BatchDispatchService` | Claims the batch atomically (`WHERE status = draft`), saves the message, queues one job per pending row |
+|---|---|
+| `BatchImportService` | Parses the upload synchronously, validates every row, creates the draft batch and all log rows in chunked bulk inserts |
+| `BatchDispatchService` | Claims the batch atomically (`UPDATE … WHERE status = draft`), saves the message, queues one job per pending row |
 | `DynamicMailerService` | Builds a Symfony mail transport at runtime from the active `smtp_settings` row |
-| `SendBulkEmailJob` | Sends one recipient's message, records the outcome, advances the batch counters atomically |
+| `SendBulkEmailJob` | Sends one recipient's message, records the outcome, advances the batch counters |
 
-Two decisions worth knowing:
+```text
+app/
+├── Exports/          BatchReportExport, SampleTemplateExport
+├── Http/
+│   ├── Controllers/  AuthController, EmailBatchController, SmtpSettingController
+│   ├── Middleware/   IsAdminMiddleware
+│   └── Requests/     UploadBatchRequest, SendBatchRequest, SmtpSettingRequest
+├── Imports/          BulkEmailImport
+├── Jobs/             SendBulkEmailJob
+├── Mail/             BulkEmailMessage
+├── Models/           User, SmtpSetting, EmailBatch, EmailLog
+└── Services/         BatchImportService, BatchDispatchService, DynamicMailerService
+```
 
-- **Parsing is synchronous, sending is queued.** A 10k-row file parses in
-  ~1.6s using chunked bulk inserts (21 statements, not 10,000), which keeps the
-  reviewed count trustworthy without a polling page.
+Three decisions worth knowing:
+
+- **Parsing is synchronous, sending is queued.** A 10,000-row file parses in
+  about 1.6s using 21 bulk inserts rather than 10,000 individual ones. That
+  keeps the reviewed count trustworthy without a polling page.
 - **Counters move via SQL increments**, never read-modify-write, so parallel
-  workers cannot race and lose updates.
+  workers cannot lose updates.
+- **The mailer is purged before each reconfigure.** Laravel caches resolved
+  mailers for the life of the process; without purging, a long-running worker
+  would keep using the first SMTP profile it ever saw.
+
+---
+
+## Database schema
+
+**`users`** — Laravel's default plus `is_admin` (boolean, default false).
+
+**`smtp_settings`** — `name`, `host`, `port`, `username`, `password`
+(encrypted), `encryption`, `from_address`, `from_name`, `is_active`.
+
+**`email_batches`** — `batch_uuid`, `file_name`, `stored_path`, `subject`,
+`body`, `total_emails`, `sent_count`, `failed_count`, `pending_count`,
+`status` (`draft` → `processing` → `completed`).
+
+**`email_logs`** — `batch_id` (FK, cascade delete), `name`, `email`, `status`
+(`pending` / `sent` / `failed`), `attempts`, `remarks`, `sent_at`.
+
+---
 
 ## Testing
 
@@ -107,20 +375,70 @@ Two decisions worth knowing:
 php artisan test
 ```
 
-76 tests run against the `smart_emailing_test` database.
+80 tests run against the `smart_emailing_test` database. Create it first if you
+skipped that step:
+
+```sql
+CREATE DATABASE smart_emailing_test;
+```
+
+Run a single file:
+
+```bash
+php artisan test --filter=EmailBatchFlowTest
+```
 
 Beyond the suite, the pipeline has been verified end to end against a real SMTP
-server: messages delivered with correct per-recipient substitution, and the
-3-attempt retry policy driven to permanent failure with the SMTP error landing
-in the report.
+server: messages delivered with correct per-recipient substitution, an SMTP
+profile swapped mid-run taking effect immediately, and the 3-attempt retry
+policy driven to permanent failure with the real error landing in the report.
+
+---
+
+## Troubleshooting
+
+**Nothing sends; the batch stays at "Processing".**
+The queue worker is not running. Start `php artisan queue:work` in a second
+terminal.
+
+**"Matching Records: 0" after uploading a valid file.**
+The column headings are not exactly `name` and `email`. Download the sample
+template and compare.
+
+**The test email fails.**
+Check the host, port and encryption. Gmail requires an
+[App Password](https://support.google.com/accounts/answer/185833) rather than
+your account password. The full SMTP error is in `storage/logs/laravel.log` —
+the on-screen message is deliberately generic, since SMTP errors can echo back
+your username.
+
+**"SQLSTATE[HY000] [2002] Connection refused".**
+MySQL is not running, or is on a different port. MAMP often uses `8889`.
+
+**A registered user sees 403 everywhere.**
+That is by design — registration creates non-admin accounts. Promote them:
+
+```sql
+UPDATE users SET is_admin = 1 WHERE email = 'them@example.com';
+```
+
+**Changed the SMTP profile but mail still uses the old one.**
+Only if your worker predates this fix — restart `queue:work`. Current code
+purges the cached mailer on every reconfigure.
+
+---
 
 ## Known limitations
 
 - `BatchReportExport` uses `FromCollection`, loading all rows into memory. Fine
-  for typical batches; a batch of ~50k rows would want `FromQuery` with chunked
+  for typical batches; around 50,000 rows would want `FromQuery` with chunked
   reading.
 - If a job dispatch throws partway through `BatchDispatchService::dispatch()`,
-  the batch is left `processing` with only some jobs queued. There is no resume
-  path.
+  the batch is left `processing` with only some jobs queued, and there is no
+  resume path.
 - Deleting the active SMTP profile mid-run fails every remaining job cleanly —
   the reason appears in the report, but the batch will not finish sending.
+- There is no open/click tracking, unsubscribe handling, or bounce processing.
+  This is a sender, not a full campaign platform.
+- Sending is not rate-limited. If your provider caps throughput, control it
+  with worker concurrency (`queue:work --sleep`) or provider-side limits.
