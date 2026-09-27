@@ -6,6 +6,7 @@ use App\Mail\BulkEmailMessage;
 use App\Models\EmailBatch;
 use App\Models\EmailLog;
 use App\Services\DynamicMailerService;
+use App\Support\SmtpFailureReason;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -79,7 +80,7 @@ class SendBulkEmailJob implements ShouldQueue
             $this->settle($batch, 'sent_count');
         } catch (Throwable $e) {
             $log->increment('attempts');
-            $log->update(['remarks' => $e->getMessage()]);
+            $log->update(['remarks' => SmtpFailureReason::from($e->getMessage())]);
 
             throw $e;
         }
@@ -98,7 +99,7 @@ class SendBulkEmailJob implements ShouldQueue
 
         $log->update([
             'status'  => EmailLog::STATUS_FAILED,
-            'remarks' => $exception->getMessage(),
+            'remarks' => SmtpFailureReason::from($exception->getMessage()),
         ]);
 
         $this->settle($log->batch, 'failed_count');

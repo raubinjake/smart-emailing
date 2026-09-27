@@ -78,7 +78,8 @@ redeploy.
 ### Reporting
 
 - Summary: total, sent, failed, success rate
-- Every row with status, date, time, attempt count, and failure reason
+- Every row with status, date, time, attempt count, and a specific failure
+  reason — which field was wrong, or what the mail server actually said
 - Times shown in the application timezone (`APP_TIMEZONE`), not UTC
 - Recipient names derived from the email address, so the report reads
   consistently regardless of how the uploaded name column was filled in
@@ -260,16 +261,26 @@ Alan Turing,alan@example.com
 Grace Hopper,grace@example.com
 ```
 
-| Rule | Behaviour |
+| Problem | Remark in the report |
 |---|---|
-| Missing `name` or `email` | Row recorded as `failed`, remark `Invalid email syntax` |
-| Malformed address | Row recorded as `failed`, remark `Invalid email syntax` |
-| Field over 191 characters | Row recorded as `failed`, remark `Name or email exceeds 191 characters` |
+| Name cell blank | `Name is missing` |
+| Email cell blank | `Email address is missing` |
+| No `@` | `Not an email address (no @ sign)` |
+| More than one `@` | `Address contains more than one @ sign` |
+| Space inside the address | `Address contains a space` |
+| Domain with no dot | `Domain "localhost" has no dot` |
+| Otherwise malformed domain | `Malformed domain "gmailll.com..,"` |
+| Value over 191 characters | `Name is longer than 191 characters` |
+| Repeated address | `Duplicate address in this file` — **still sent** |
 | Fully blank row | Skipped entirely, not counted |
-| Duplicate rows | Kept — each gets its own email |
-| Wrong headings (e.g. `Full Name`) | Parses to **zero** rows; the compose page warns you |
 
-Rejected rows are never sent but always appear in the report.
+Rejected rows are never sent but always appear in the report. A duplicate is
+the exception — it is flagged but still delivered, since a file may contain one
+deliberately.
+
+Send failures are translated too, so the report reads
+`Mailbox does not exist at that address` rather than a raw `550 5.1.1` dump.
+An error the app does not recognise is kept verbatim so no detail is lost.
 
 ---
 

@@ -51,7 +51,8 @@ class BatchImportServiceTest extends TestCase
 
         $failed = $batch->logs()->where('status', EmailLog::STATUS_FAILED)->get();
         $this->assertCount(2, $failed);
-        $this->assertSame('Invalid email syntax', $failed->first()->remarks);
+        // The reason is specific enough to act on, not a blanket message.
+        $this->assertSame('Not an email address (no @ sign)', $failed->first()->remarks);
     }
 
     public function test_rows_missing_a_name_are_rejected(): void
@@ -104,7 +105,7 @@ class BatchImportServiceTest extends TestCase
         $this->assertSame(1, $batch->failed_count);
 
         $rejected = $batch->logs()->where('status', EmailLog::STATUS_FAILED)->first();
-        $this->assertSame(BatchImportService::TOO_LONG_REMARK, $rejected->remarks);
+        $this->assertSame('Name is longer than 191 characters', $rejected->remarks);
         $this->assertSame(191, mb_strlen($rejected->name), 'stored value is truncated to the column width');
     }
 
