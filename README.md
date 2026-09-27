@@ -18,6 +18,7 @@ dropped, so the report always accounts for the whole file.
 - [Running the app](#running-the-app)
 - [How to use it](#how-to-use-it)
 - [The recipient file](#the-recipient-file)
+- [Timezone and recipient names](#timezone-and-recipient-names-in-the-report)
 - [How sending works](#how-sending-works)
 - [Routes](#routes)
 - [Architecture](#architecture)
@@ -78,6 +79,9 @@ redeploy.
 
 - Summary: total, sent, failed, success rate
 - Every row with status, date, time, attempt count, and failure reason
+- Times shown in the application timezone (`APP_TIMEZONE`), not UTC
+- Recipient names derived from the email address, so the report reads
+  consistently regardless of how the uploaded name column was filled in
 - Filter by All / Sent / Failed / Pending
 - Excel export of the report, honouring the active filter
 - Delete a batch — removes its logs and the stored upload
@@ -122,6 +126,8 @@ CREATE DATABASE smart_emailing_test;
 Set the connection in `.env`:
 
 ```dotenv
+APP_TIMEZONE=Asia/Kolkata
+
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -131,6 +137,11 @@ DB_PASSWORD=root
 
 QUEUE_CONNECTION=database
 ```
+
+Set `APP_TIMEZONE` to your own zone — it controls every date and time the app
+records and displays. Use any
+[PHP timezone identifier](https://www.php.net/manual/en/timezones.php)
+(`Asia/Kolkata`, `Europe/London`, `America/New_York`).
 
 > **MAMP note:** MAMP ships two MySQL port configurations — `3306` and `8889`.
 > This project was developed against `3306`. If the connection is refused,
@@ -259,6 +270,36 @@ Grace Hopper,grace@example.com
 | Wrong headings (e.g. `Full Name`) | Parses to **zero** rows; the compose page warns you |
 
 Rejected rows are never sent but always appear in the report.
+
+---
+
+## Timezone and recipient names in the report
+
+**Times follow `APP_TIMEZONE`.** Set it once in `.env` and the report page, the
+Excel export, and the batch list all agree. Timestamps are stored as written by
+the app, so changing the setting later affects new rows — a migration ships
+with this project that shifted the rows written before the setting was
+introduced.
+
+**Names are derived from the email address**, not from the uploaded `name`
+column. Uploaded names tend to be inconsistent (`robin`, `robin2`, `rbn 3`), so
+the report builds a readable name from the address instead:
+
+| Address | Shown as |
+|---|---|
+| `robin@yopmail.com` | Robin |
+| `robinos36ty@gmail.com` | Robinos36ty |
+| `ada.lovelace@example.com` | Ada Lovelace |
+| `alan_turing@example.com` | Alan Turing |
+| `robin+newsletter@gmail.com` | Robin |
+| `RobinKumar@example.com` | RobinKumar |
+
+Dots, underscores and hyphens become spaces, a `+tag` is dropped, and a word
+already mixed-case is left as typed.
+
+> The uploaded `name` is still stored and is what `{{ name }}` inserts into
+> outgoing mail — recipients are greeted by the name you supplied, while the
+> report uses the derived one.
 
 ---
 
@@ -421,6 +462,11 @@ That is by design — registration creates non-admin accounts. Promote them:
 ```sql
 UPDATE users SET is_admin = 1 WHERE email = 'them@example.com';
 ```
+
+**Report times are wrong / look shifted by several hours.**
+`APP_TIMEZONE` in `.env` is not your zone. Set it, then
+`php artisan config:clear`. New rows use it immediately; rows written under the
+old setting keep their old values unless you shift them.
 
 **Changed the SMTP profile but mail still uses the old one.**
 Only if your worker predates this fix — restart `queue:work`. Current code

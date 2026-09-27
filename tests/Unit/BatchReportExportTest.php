@@ -37,6 +37,57 @@ class BatchReportExportTest extends TestCase
         $this->assertCount(2, $rows, 'the report must account for the whole file');
     }
 
+    public function test_the_name_column_is_derived_from_the_email(): void
+    {
+        $batch = EmailBatch::factory()->create();
+
+        EmailLog::factory()->create([
+            'batch_id' => $batch->id,
+            'name'     => 'rbn 3',
+            'email'    => 'ada.lovelace@example.com',
+        ]);
+
+        $row = (new BatchReportExport($batch))->collection()->first();
+
+        $this->assertSame('Ada Lovelace', $row[0], 'the report shows the email-derived name');
+    }
+
+    public function test_exported_times_match_what_the_app_stored(): void
+    {
+        $batch = EmailBatch::factory()->create();
+
+        // Laravel's datetime cast labels stored values with the app timezone
+        // rather than shifting them, so what the app wrote is what the report
+        // must show — no silent offset between the screen and the file.
+        $sentAt = now();
+
+        EmailLog::factory()->create([
+            'batch_id' => $batch->id,
+            'status'   => EmailLog::STATUS_SENT,
+            'sent_at'  => $sentAt,
+        ]);
+
+        $row = (new BatchReportExport($batch))->collection()->first();
+
+        $this->assertSame($sentAt->format('Y-m-d'), $row[3]);
+        $this->assertSame($sentAt->format('H:i:s'), $row[4]);
+    }
+
+    public function test_the_report_and_the_export_agree_on_the_timestamp(): void
+    {
+        $batch = EmailBatch::factory()->create();
+
+        $log = EmailLog::factory()->create([
+            'batch_id' => $batch->id,
+            'status'   => EmailLog::STATUS_SENT,
+            'sent_at'  => now(),
+        ]);
+
+        $row = (new BatchReportExport($batch))->collection()->first();
+
+        $this->assertSame($log->fresh()->sent_at->format('H:i:s'), $row[4]);
+    }
+
     public function test_the_heading_row_names_every_report_column(): void
     {
         $batch = EmailBatch::factory()->create();
@@ -64,7 +115,7 @@ class BatchReportExportTest extends TestCase
 
         $row = (new BatchReportExport($batch))->collection()->first();
 
-        $this->assertSame('Bob', $row[0]);
+        $this->assertSame('Bad Address', $row[0], 'name is derived from the email, not the upload');
         $this->assertSame('bad-address', $row[1]);
         $this->assertSame('Failed', $row[2]);
         $this->assertSame(3, $row[5]);

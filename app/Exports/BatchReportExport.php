@@ -35,11 +35,11 @@ class BatchReportExport implements FromCollection, WithHeadings
             ->orderBy('id')
             ->get()
             ->map(fn ($log) => [
-                $this->defuse($log->name),
+                $this->defuse($log->displayName()),
                 $this->defuse($log->email),
                 ucfirst($log->status),
-                $log->sent_at?->format('Y-m-d') ?? $log->created_at->format('Y-m-d'),
-                $log->sent_at?->format('H:i:s') ?? $log->created_at->format('H:i:s'),
+                ($log->sent_at ?? $log->created_at)->format('Y-m-d'),
+                ($log->sent_at ?? $log->created_at)->format('H:i:s'),
                 $log->attempts,
                 $this->defuse($log->remarks ?? ''),
             ]);

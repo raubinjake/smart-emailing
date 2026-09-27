@@ -66,7 +66,7 @@
                         @forelse ($logs as $log)
                             @php $stamp = $log->sent_at ?? $log->created_at; @endphp
                             <tr>
-                                <td>{{ $log->name }}</td>
+                                <td>{{ $log->displayName() }}</td>
                                 <td>{{ $log->email }}</td>
                                 <td>@include('partials.status-badge', ['status' => $log->status])</td>
                                 <td>{{ $stamp?->format('d M Y') }}</td>
