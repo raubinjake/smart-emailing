@@ -475,17 +475,21 @@ policy driven to permanent failure with the real error landing in the report.
 
 ## Deployment
 
-Two supported routes, depending on whether you want a persistent process:
+Three routes, depending on budget and how fast you need sending to start:
 
-| | Guide | Sending | Notes |
+| | Guide | Cost | Sending starts |
 |---|---|---|---|
-| **Railway / Render / Fly / VPS** | [DEPLOYMENT.md](DEPLOYMENT.md) | Immediate | Runs the app unchanged, with a real queue worker |
-| **Vercel** | [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md) | Up to ~60s delay | No persistent process, so a cron drains the queue each minute |
+| **Vercel + Aiven MySQL** | [DEPLOY-FREE.md](DEPLOY-FREE.md) | **$0** | ~1 min (external pinger) |
+| **Railway / Laravel Cloud / VPS** | [DEPLOYMENT.md](DEPLOYMENT.md) | ~$5/mo | Immediate (real worker) |
+| **Vercel Pro** | [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md) | $20/mo | ~1 min (native cron) |
 
-The first route can use **SQLite on a small persistent volume** (no database
-bill) or MySQL. **Vercel cannot use SQLite** — its filesystem is read-only apart
-from a per-instance `/tmp` — so it needs hosted MySQL, and additionally the
-**Pro plan**, since cron on Hobby runs once per day.
+The free route works because the queue is drained by hitting a secret-guarded
+URL rather than by a worker process. Vercel's own cron only runs **once a day**
+on the Hobby plan — a per-minute schedule fails at deploy time — so a free
+external pinger (cron-job.org) drives it instead.
+
+Note SQLite cannot be used on Vercel: the filesystem is read-only apart from
+`/tmp`, which is per-instance. Use hosted MySQL there.
 
 A `Dockerfile` ships for the first route; the same image serves both roles:
 
