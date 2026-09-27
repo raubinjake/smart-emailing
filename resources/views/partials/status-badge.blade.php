@@ -1,11 +1,13 @@
 @php
-    $badgeClass = match ($status) {
-        'sent', 'completed' => 'bg-success',
-        'failed'            => 'bg-danger',
-        'pending'           => 'bg-warning text-dark',
-        'draft'             => 'bg-secondary',
-        'processing'        => 'bg-info text-dark',
-        default             => 'bg-secondary',
+    // Delivery vocabulary on the surface; the stored enum is untouched.
+    [$pillClass, $label] = match ($status) {
+        'sent'       => ['pill--ok', 'Delivered'],
+        'completed'  => ['pill--ok', 'Completed'],
+        'failed'     => ['pill--bad', 'Failed'],
+        'pending'    => ['pill--warn', 'Queued'],
+        'processing' => ['pill--busy', 'Sending'],
+        'draft'      => ['pill--idle', 'Draft'],
+        default      => ['pill--idle', ucfirst((string) $status)],
     };
 @endphp
-<span class="badge {{ $badgeClass }}">{{ ucfirst($status) }}</span>
+<span class="pill {{ $pillClass }}">{{ $label }}</span>

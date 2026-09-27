@@ -3,71 +3,105 @@
 @section('title', 'SMTP profiles')
 
 @section('content')
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h5 mb-0">SMTP Profiles</h1>
-        <a href="{{ route('smtp.create') }}" class="btn btn-dark">Add Profile</a>
+    <div class="page-head">
+        <div>
+            <span class="eyebrow">Configuration</span>
+            <h1 class="page-head__title">SMTP profiles</h1>
+            <p class="page-head__sub">The relays this app hands mail to. One profile is active at a time.</p>
+        </div>
+        <div class="page-head__actions">
+            <a href="{{ route('smtp.create') }}" class="btn btn--primary btn--sm">Add profile</a>
+        </div>
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
+    <div class="panel">
+        <div class="panel__head">
+            <h2 class="panel__title">Relays</h2>
+            <span class="small muted mono">{{ $settings->count() }} configured</span>
+        </div>
+
+        <div class="panel__body panel__body--flush">
+            <div class="table-wrap">
+                <table class="table">
                     <thead>
                         <tr>
-                            <th>Name</th>
+                            <th>Profile</th>
                             <th>Host</th>
-                            <th class="text-end">Port</th>
-                            <th>From</th>
-                            <th>Active</th>
-                            <th class="text-end">Actions</th>
+                            <th class="num">Port</th>
+                            <th>Envelope from</th>
+                            <th>State</th>
+                            <th class="actions">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse ($settings as $smtp)
-                            <tr>
-                                <td>{{ $smtp->name }}</td>
-                                <td>{{ $smtp->host }}</td>
-                                <td class="text-end">{{ $smtp->port }}</td>
-                                <td>{{ $smtp->from_name }} &lt;{{ $smtp->from_address }}&gt;</td>
+                            <tr class="row-state {{ $smtp->is_active ? 'row-ok' : '' }}">
                                 <td>
-                                    @if ($smtp->is_active)
-                                        <span class="badge bg-success">Active</span>
-                                    @else
-                                        <form method="POST" action="{{ route('smtp.activate', $smtp) }}" class="m-0">
-                                            @csrf
-                                            <button type="submit" class="btn btn-sm btn-outline-secondary">
-                                                Activate
-                                            </button>
-                                        </form>
-                                    @endif
+                                    <div class="cell-stack">
+                                        <span>{{ $smtp->name }}</span>
+                                        <span class="cell-stack__sub mono">{{ $smtp->username }}</span>
+                                    </div>
                                 </td>
                                 <td>
-                                    <div class="d-flex justify-content-end align-items-center gap-1 flex-wrap">
+                                    <div class="cell-stack">
+                                        <span class="mono">{{ $smtp->host }}</span>
+                                        <span class="cell-stack__sub">
+                                            {{ filled($smtp->encryption) ? strtoupper($smtp->encryption) : 'No encryption' }}
+                                        </span>
+                                    </div>
+                                </td>
+                                <td class="num">{{ $smtp->port }}</td>
+                                <td>
+                                    <div class="cell-stack">
+                                        <span>{{ $smtp->from_name }}</span>
+                                        <span class="cell-stack__sub mono">{{ $smtp->from_address }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    @if ($smtp->is_active)
+                                        <span class="pill pill--ok">Active</span>
+                                    @else
+                                        <span class="pill pill--idle">Standby</span>
+                                    @endif
+                                </td>
+                                <td class="actions">
+                                    <div class="actions__row">
                                         <form method="POST" action="{{ route('smtp.test', $smtp) }}"
-                                              class="d-flex gap-1 m-0">
+                                              class="inline-form">
                                             @csrf
-                                            <input type="email" name="email" class="form-control form-control-sm"
-                                                   placeholder="test@example.com" required style="width: 12rem;">
-                                            <button type="submit" class="btn btn-sm btn-outline-primary">Test</button>
+                                            <input type="email" name="email" class="input input--mono"
+                                                   placeholder="test@example.com" required
+                                                   aria-label="Send a test message to"
+                                                   style="width: 12rem;">
+                                            <button type="submit" class="btn btn--sm">Send test</button>
                                         </form>
 
+                                        @unless ($smtp->is_active)
+                                            <form method="POST" action="{{ route('smtp.activate', $smtp) }}"
+                                                  class="inline-form">
+                                                @csrf
+                                                <button type="submit" class="btn btn--sm">Make active</button>
+                                            </form>
+                                        @endunless
+
                                         <a href="{{ route('smtp.edit', $smtp) }}"
-                                           class="btn btn-sm btn-outline-secondary">Edit</a>
+                                           class="btn btn--sm">Edit</a>
 
                                         <form method="POST" action="{{ route('smtp.destroy', $smtp) }}"
-                                              class="m-0"
+                                              class="inline-form"
                                               onsubmit="return confirm('Delete this SMTP profile?');">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                            <button type="submit" class="btn btn--sm btn--danger">Delete</button>
                                         </form>
                                     </div>
                                 </td>
                             </tr>
                         @empty
-                            <tr>
-                                <td colspan="6" class="text-center text-muted py-4">
-                                    No SMTP profiles yet. Add one before sending mail.
+                            <tr class="table__empty">
+                                <td colspan="6">
+                                    <strong>No relay configured</strong>
+                                    Add an SMTP profile before running a send.
                                 </td>
                             </tr>
                         @endforelse

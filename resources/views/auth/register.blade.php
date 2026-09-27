@@ -3,46 +3,42 @@
 @section('title', 'Register')
 
 @section('content')
-    <div class="row justify-content-center">
-        <div class="col-md-5">
-            <div class="card shadow-sm">
-                <div class="card-body p-4">
-                    <h1 class="h4 mb-4">Register</h1>
+    <div class="auth__card">
+        <h1 class="auth__title">Register</h1>
+        <p class="auth__lede">Create the account you will send from.</p>
 
-                    <form method="POST" action="{{ url('/register') }}">
-                        @csrf
+        <form method="POST" action="{{ url('/register') }}">
+            @csrf
 
-                        <div class="mb-3">
-                            <label for="name" class="form-label">Name</label>
-                            <input type="text" class="form-control" id="name" name="name"
-                                   value="{{ old('name') }}" required autofocus>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="email" class="form-control" id="email" name="email"
-                                   value="{{ old('email') }}" required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="password" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="password" name="password" required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="password_confirmation" class="form-label">Confirm password</label>
-                            <input type="password" class="form-control" id="password_confirmation"
-                                   name="password_confirmation" required>
-                        </div>
-
-                        <button type="submit" class="btn btn-dark w-100">Register</button>
-                    </form>
-
-                    <p class="mt-3 mb-0 text-center">
-                        Already registered? <a href="{{ route('login') }}">Log in</a>
-                    </p>
-                </div>
+            <div class="field">
+                <label for="name" class="field__label">Name</label>
+                <input type="text" class="input" id="name" name="name"
+                       value="{{ old('name') }}" required autofocus autocomplete="name">
             </div>
-        </div>
+
+            <div class="field">
+                <label for="email" class="field__label">Email</label>
+                <input type="email" class="input input--mono" id="email" name="email"
+                       value="{{ old('email') }}" required autocomplete="username">
+            </div>
+
+            <div class="field">
+                <label for="password" class="field__label">Password</label>
+                <input type="password" class="input" id="password" name="password"
+                       required autocomplete="new-password">
+            </div>
+
+            <div class="field">
+                <label for="password_confirmation" class="field__label">Confirm password</label>
+                <input type="password" class="input" id="password_confirmation"
+                       name="password_confirmation" required autocomplete="new-password">
+            </div>
+
+            <button type="submit" class="btn btn--primary btn--block">Register</button>
+        </form>
+
+        <p class="auth__alt">
+            Already registered? <a href="{{ route('login') }}">Log in</a>
+        </p>
     </div>
 @endsection
