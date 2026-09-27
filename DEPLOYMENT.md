@@ -1,12 +1,26 @@
 # Deploying Smart Emailing
 
 This app needs three things its host must provide: **a persistent PHP process**,
-**MySQL**, and **a second always-on process for the queue worker**. Without the
-worker, uploads parse and batches queue but no mail is ever delivered.
+**a database**, and **a second always-on process for the queue worker**. Without
+the worker, uploads parse and batches queue but no mail is ever delivered.
 
 That rules out serverless platforms — Vercel, Netlify, Lambda — which have no
-long-running process and an ephemeral filesystem. The instructions below are
-for Railway; the same image runs on Render, Fly.io, or any VPS with Docker.
+long-running process and an ephemeral filesystem.
+
+The database can be either:
+
+- **SQLite** — a single file, no server, no hosting cost. It needs a
+  **persistent volume**; see [Free hosting with SQLite](#free-hosting-with-sqlite-flyio-render).
+  This is the cheapest setup and works well for one worker.
+- **MySQL** — a managed service, e.g. Railway's. Better if you expect several
+  workers writing hard in parallel, or want managed backups.
+
+The app supports both with no code change: the only two driver-specific SQL
+expressions branch on `DB_CONNECTION` at runtime. The Docker image ships both
+`pdo_mysql` and `pdo_sqlite`.
+
+The Railway instructions below use MySQL; the same image runs on Render, Fly.io,
+or any VPS with Docker.
 
 ---
 
@@ -14,7 +28,7 @@ for Railway; the same image runs on Render, Fly.io, or any VPS with Docker.
 
 | File | Purpose |
 |---|---|
-| `Dockerfile` | PHP 8.2 + nginx + the extensions PhpSpreadsheet needs (`gd`, `intl`, `zip`) |
+| `Dockerfile` | PHP 8.2 + nginx + the extensions PhpSpreadsheet needs (`gd`, `intl`, `zip`), plus `pdo_mysql` and `pdo_sqlite` |
 | `docker/entrypoint.sh` | One image, two roles — `web` and `worker` |
 | `docker/nginx.conf` | Serves `public/`, 16 MB body limit, 120s FastCGI timeout |
 | `docker/supervisord.conf` | Runs nginx and php-fpm together in the web container |
@@ -175,6 +189,105 @@ Railway bills by usage. A small deployment of this app — web service, worker,
 and MySQL — typically runs around **$5–10/month**. The worker is the main cost
 driver since it runs continuously; it is also what makes the app work.
 
+Dropping the managed database and using **SQLite on a small persistent volume**
+removes the database line item entirely — see
+[Free hosting with SQLite](#free-hosting-with-sqlite-flyio-render). You still
+need the always-on worker process.
+
+---
+
+## Free hosting with SQLite (Fly.io, Render)
+
+Fly.io and Render both offer a small persistent volume. Mounting one and putting
+the SQLite file on it gives you a real database and a real queue worker without
+paying for a managed MySQL.
+
+### The one rule that matters
+
+> **The SQLite file MUST live on a persistent volume.**
+>
+> A container's own filesystem is ephemeral: it is rebuilt from the image on
+> every deploy, restart and crash. A SQLite file written there is **wiped**,
+> silently, taking every batch and log with it. `DB_DATABASE` must point at a
+> path *inside the mounted volume* — never at `database/database.sqlite` in the
+> image, and never at `/tmp`.
+
+### Fly.io
+
+Create the volume once (1 GB is plenty — this app stores rows, not media):
+
+```bash
+fly volumes create smart_emailing_data --size 1
+```
+
+Mount it and define both processes in `fly.toml`:
+
+```toml
+[processes]
+  web = "entrypoint web"
+  worker = "entrypoint worker"
+
+[[mounts]]
+  source = "smart_emailing_data"
+  destination = "/data"
+
+[env]
+  DB_CONNECTION = "sqlite"
+  DB_DATABASE = "/data/database.sqlite"
+```
+
+Set the rest of the config as secrets (`fly secrets set APP_KEY=base64:… APP_URL=…`).
+
+**One caveat:** a Fly volume attaches to a single machine, so the web process
+and the worker must run on the **same machine** to share the file — or the
+worker must be the only process that writes. If you scale to multiple machines,
+move to MySQL or a hosted-SQLite service such as Turso.
+
+### Render
+
+Add a **Disk** to the service (Settings → Disks), mount path `/data`, 1 GB. Then
+set:
+
+```
+DB_CONNECTION=sqlite
+DB_DATABASE=/data/database.sqlite
+```
+
+Render disks attach to one instance, so the same single-writer caveat applies:
+run the web service and the worker as one service with both processes, or keep
+writes on one instance.
+
+### Creating the file and migrating
+
+The entrypoint runs migrations on deploy. SQLite needs the file to exist first;
+create it once from the service shell:
+
+```bash
+touch /data/database.sqlite
+php artisan migrate --force
+php artisan db:seed --force      # first admin, once only
+```
+
+### WAL is enabled automatically
+
+`AppServiceProvider` turns on WAL journalling, a 5s busy timeout and
+`PRAGMA foreign_keys=ON` whenever the driver is SQLite. WAL is what lets the
+queue worker write while web requests read — without it the two block each other
+and you get "database is locked". `foreign_keys=ON` is also required: SQLite
+does **not** enforce foreign keys by default, and without it deleting a batch
+would leave its `email_logs` rows orphaned instead of cascading.
+
+### Backups
+
+A SQLite database is one file, so a backup is a file copy — but copy it with the
+SQLite CLI rather than `cp`, which can catch a half-written WAL:
+
+```bash
+sqlite3 /data/database.sqlite ".backup '/data/backup-$(date +%F).sqlite'"
+```
+
+Managed MySQL gives you automated backups; with SQLite this is yours to schedule.
+
 ---
 
 ## Other platforms
@@ -219,3 +332,12 @@ buildpack.
 **Migrations fail on first deploy.**
 The database variables are wrong or the MySQL service is still provisioning.
 Check them, then redeploy.
+
+**On SQLite: "database is locked".**
+WAL or the busy timeout is not in effect — both are set by `AppServiceProvider`
+for the SQLite driver. Check that the file is on a volume the process can write
+to, and that you are not running several machines against one volume.
+
+**On SQLite: every batch disappeared after a deploy.**
+`DB_DATABASE` points at a path inside the container image instead of the mounted
+volume, so it is recreated empty on each deploy. Point it at the volume.

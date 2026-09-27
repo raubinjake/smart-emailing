@@ -101,8 +101,8 @@ redeploy.
 
 | | |
 |---|---|
-| PHP | 8.2+ |
-| MySQL | 5.7+ (8.x fine) |
+| PHP | 8.2+ (with `pdo_sqlite`, which ships enabled by default) |
+| Database | **None to install** — SQLite by default. MySQL 5.7+ (8.x fine) also supported |
 | Composer | 2.x |
 | Node | Only to refresh the vendored TinyMCE — not needed to run the app |
 
@@ -116,26 +116,18 @@ cd smart-emailing
 composer install
 cp .env.example .env
 php artisan key:generate
+touch database/database.sqlite
 ```
 
-Create the two databases:
-
-```sql
-CREATE DATABASE smart_emailing;
-CREATE DATABASE smart_emailing_test;
-```
-
-Set the connection in `.env`:
+That is the whole database setup. `.env.example` defaults to **SQLite**, so a
+fresh clone runs with no database server to install, configure or pay for:
 
 ```dotenv
 APP_TIMEZONE=Asia/Kolkata
 
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=smart_emailing
-DB_USERNAME=root
-DB_PASSWORD=root
+DB_CONNECTION=sqlite
+# DB_DATABASE is optional — unset, it uses database/database.sqlite.
+# If you do set it, give an ABSOLUTE path.
 
 QUEUE_CONNECTION=database
 ```
@@ -145,9 +137,39 @@ records and displays. Use any
 [PHP timezone identifier](https://www.php.net/manual/en/timezones.php)
 (`Asia/Kolkata`, `Europe/London`, `America/New_York`).
 
+WAL journalling, a 5s busy timeout and `PRAGMA foreign_keys=ON` are enabled
+automatically for SQLite (`AppServiceProvider`). WAL is what lets the queue
+worker write while you browse; `foreign_keys=ON` is required because SQLite
+does not enforce foreign keys by default, and the app relies on `email_logs`
+cascading when a batch is deleted.
+
+<details>
+<summary><strong>Using MySQL instead</strong></summary>
+
+MySQL is fully supported — the two driver-specific SQL expressions branch on
+the connection driver at runtime. Create the databases:
+
+```sql
+CREATE DATABASE smart_emailing;
+CREATE DATABASE smart_emailing_test;
+```
+
+and swap the commented MySQL block in `.env` for the SQLite lines:
+
+```dotenv
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=smart_emailing
+DB_USERNAME=root
+DB_PASSWORD=root
+```
+
 > **MAMP note:** MAMP ships two MySQL port configurations — `3306` and `8889`.
 > This project was developed against `3306`. If the connection is refused,
 > check which one your install uses on MAMP's start page and adjust `DB_PORT`.
+
+</details>
 
 Run the migrations and seed the first admin:
 
@@ -428,11 +450,14 @@ Three decisions worth knowing:
 php artisan test
 ```
 
-80 tests run against the `smart_emailing_test` database. Create it first if you
-skipped that step:
+115 tests run against an **in-memory SQLite** database — no server, no setup,
+and nothing to clean up afterwards.
 
-```sql
-CREATE DATABASE smart_emailing_test;
+To verify the MySQL driver as well, point the same suite at a MySQL database
+(command-line variables override `phpunit.xml`):
+
+```bash
+DB_CONNECTION=mysql DB_DATABASE=smart_emailing_test php artisan test
 ```
 
 Run a single file:
@@ -457,8 +482,10 @@ Two supported routes, depending on whether you want a persistent process:
 | **Railway / Render / Fly / VPS** | [DEPLOYMENT.md](DEPLOYMENT.md) | Immediate | Runs the app unchanged, with a real queue worker |
 | **Vercel** | [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md) | Up to ~60s delay | No persistent process, so a cron drains the queue each minute |
 
-Both need an external MySQL. The Vercel route additionally needs the **Pro
-plan** — cron on Hobby runs once per day, which makes sending unusable.
+The first route can use **SQLite on a small persistent volume** (no database
+bill) or MySQL. **Vercel cannot use SQLite** — its filesystem is read-only apart
+from a per-instance `/tmp` — so it needs hosted MySQL, and additionally the
+**Pro plan**, since cron on Hobby runs once per day.
 
 A `Dockerfile` ships for the first route; the same image serves both roles:
 
@@ -487,7 +514,12 @@ the on-screen message is deliberately generic, since SMTP errors can echo back
 your username.
 
 **"SQLSTATE[HY000] [2002] Connection refused".**
-MySQL is not running, or is on a different port. MAMP often uses `8889`.
+Only applies when using MySQL: it is not running, or is on a different port.
+MAMP often uses `8889`. On the default SQLite setup there is no server to run.
+
+**"Database file at path ... does not exist" (SQLite).**
+Create it: `touch database/database.sqlite`, then `php artisan migrate`. If
+`DB_DATABASE` is set, it must be an **absolute** path.
 
 **A registered user sees 403 everywhere.**
 That is by design — registration creates non-admin accounts. Promote them:

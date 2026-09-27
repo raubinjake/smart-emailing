@@ -19,13 +19,35 @@ app unchanged.
 | | |
 |---|---|
 | Vercel account | Hobby works; **Cron on Hobby runs once per day**, so Pro is needed for per-minute sending |
-| A MySQL database | Vercel does not host one — see below |
+| A hosted MySQL database | Vercel does not host one, and SQLite does not work here — see below |
 | An SMTP provider | Configured in-app after deploy, not in env vars |
+
+### SQLite does NOT work on Vercel
+
+The app defaults to SQLite for local development, and SQLite is the cheapest
+option on a host with a persistent volume ([DEPLOYMENT.md](DEPLOYMENT.md)). **On
+Vercel it is not an option at all**, and it is worth being precise about why:
+
+- **The filesystem is read-only** apart from `/tmp`, so the database file cannot
+  live anywhere in the deployed app directory.
+- **`/tmp` is per-instance and ephemeral.** Each serverless invocation may run on
+  a different instance, and instances are recycled freely. A database written to
+  `/tmp` would be invisible to the next request and gone shortly after — you
+  would see batches vanish between page loads.
+
+There is no configuration that works around this; it is what serverless means.
+**Vercel needs a hosted MySQL database.**
+
+> *Aside:* [Turso](https://turso.tech) offers hosted SQLite over HTTP, which does
+> suit serverless. It needs a separate driver package (`libsql`), which this repo
+> does not install and this guide does not cover. Mentioned only so you know the
+> option exists.
 
 ### Picking a database
 
-The app is MySQL-specific (it uses `GREATEST()` in the batch-counter SQL), so
-use MySQL rather than Postgres:
+The app runs on either MySQL or SQLite — the driver-specific SQL branches at
+runtime — but since SQLite is unusable on Vercel, use a hosted **MySQL** here.
+Postgres is not supported:
 
 | Provider | Notes |
 |---|---|

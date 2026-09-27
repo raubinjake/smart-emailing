@@ -121,9 +121,15 @@ class SendBulkEmailJob implements ShouldQueue
             throw new InvalidArgumentException("Cannot settle on column [{$column}].");
         }
 
+        // SQLite has no GREATEST(); its two-argument MAX() is the equivalent.
+        // (Scalar MAX(a, b) in SQLite, not the MySQL aggregate of the same name.)
+        $floorAtZero = DB::connection()->getDriverName() === 'sqlite'
+            ? 'MAX(pending_count - 1, 0)'
+            : 'GREATEST(pending_count - 1, 0)';
+
         EmailBatch::whereKey($batch->id)->update([
             $column         => DB::raw($column . ' + 1'),
-            'pending_count' => DB::raw('GREATEST(pending_count - 1, 0)'),
+            'pending_count' => DB::raw($floorAtZero),
         ]);
 
         $fresh = $batch->fresh();

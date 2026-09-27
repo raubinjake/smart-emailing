@@ -23,3 +23,11 @@ yarn-error.log
 /.zed
 
 .DS_Store
+
+# SQLite databases are data, not code.
+/database/*.sqlite
+/database/*.sqlite-wal
+/database/*.sqlite-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

@@ -65,18 +65,30 @@ return new class extends Migration
             return;
         }
 
+        $connection = DB::connection();
+        $grammar    = $connection->getQueryGrammar();
+        $isSqlite   = $connection->getDriverName() === 'sqlite';
+
         foreach ($this->targets() as $table => $columns) {
             $sets = [];
 
             foreach ($columns as $column) {
+                // Identifiers are quoted by the connection's own grammar:
+                // backticks on MySQL, double quotes on SQLite.
+                $quoted = $grammar->wrap($column);
+
                 // NULL stays NULL — an unsent row has no sent_at to shift.
-                $sets[] = "`{$column}` = DATE_ADD(`{$column}`, INTERVAL {$seconds} SECOND)";
+                // Both forms return NULL for a NULL input.
+                $sets[] = $isSqlite
+                    ? sprintf("%s = datetime(%s, '%+d seconds')", $quoted, $quoted, $seconds)
+                    : sprintf('%s = DATE_ADD(%s, INTERVAL %d SECOND)', $quoted, $quoted, $seconds);
             }
 
             DB::statement(sprintf(
-                'UPDATE `%s` SET %s WHERE `created_at` < ?',
-                $table,
+                'UPDATE %s SET %s WHERE %s < ?',
+                $grammar->wrapTable($table),
                 implode(', ', $sets),
+                $grammar->wrap('created_at'),
             ), [self::CUTOFF]);
         }
     }

@@ -25,6 +25,7 @@ RUN apk add --no-cache \
         intl \
         zip \
         pdo_mysql \
+        pdo_sqlite \
         bcmath \
         opcache \
     && rm -rf /var/cache/apk/*
