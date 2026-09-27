@@ -450,14 +450,17 @@ policy driven to permanent failure with the real error landing in the report.
 
 ## Deployment
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the full guide.
+Two supported routes, depending on whether you want a persistent process:
 
-The app needs a host that can run **a persistent PHP process, MySQL, and a
-second always-on process for the queue worker**. Serverless platforms (Vercel,
-Netlify, Lambda) cannot run the worker, so batches would queue and never send.
+| | Guide | Sending | Notes |
+|---|---|---|---|
+| **Railway / Render / Fly / VPS** | [DEPLOYMENT.md](DEPLOYMENT.md) | Immediate | Runs the app unchanged, with a real queue worker |
+| **Vercel** | [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md) | Up to ~60s delay | No persistent process, so a cron drains the queue each minute |
 
-A `Dockerfile` ships in this repo. Railway, Render, Fly.io and any Docker VPS
-all work; the same image serves both roles:
+Both need an external MySQL. The Vercel route additionally needs the **Pro
+plan** — cron on Hobby runs once per day, which makes sending unusable.
+
+A `Dockerfile` ships for the first route; the same image serves both roles:
 
 ```bash
 entrypoint web      # nginx + php-fpm, runs migrations on boot
