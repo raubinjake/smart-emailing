@@ -24,6 +24,7 @@ dropped, so the report always accounts for the whole file.
 - [Architecture](#architecture)
 - [Database schema](#database-schema)
 - [Testing](#testing)
+- [Deployment](#deployment)
 - [Troubleshooting](#troubleshooting)
 - [Known limitations](#known-limitations)
 
@@ -444,6 +445,24 @@ Beyond the suite, the pipeline has been verified end to end against a real SMTP
 server: messages delivered with correct per-recipient substitution, an SMTP
 profile swapped mid-run taking effect immediately, and the 3-attempt retry
 policy driven to permanent failure with the real error landing in the report.
+
+---
+
+## Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full guide.
+
+The app needs a host that can run **a persistent PHP process, MySQL, and a
+second always-on process for the queue worker**. Serverless platforms (Vercel,
+Netlify, Lambda) cannot run the worker, so batches would queue and never send.
+
+A `Dockerfile` ships in this repo. Railway, Render, Fly.io and any Docker VPS
+all work; the same image serves both roles:
+
+```bash
+entrypoint web      # nginx + php-fpm, runs migrations on boot
+entrypoint worker   # queue:work — without this, nothing is delivered
+```
 
 ---
 
